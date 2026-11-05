@@ -131,7 +131,7 @@ O painel já está disponível pelo domínio principal, com login. Se preferir a
 ssh -N -L 8081:127.0.0.1:8081 usuario@IP_DA_VPS
 ```
 
-Acesse http://localhost:8081 e faça login. O painel aceita MP4 e MOV até 500 MB, sincroniza gravações ao atualizar a página e permite copiar links, copiar iframes, revogar links e excluir vídeos. Todas as alterações exigem sessão autenticada e token CSRF.
+Acesse http://localhost:8081 e faça login. O painel usa visual de catálogo (tons `#0057BA`, `#0076DD`, `#17BB2E`, `#EFE778`), aceita MP4 e MOV até 500 MB, sincroniza gravações ao atualizar a página e permite copiar links, copiar iframes, revogar links e excluir vídeos. No menu **Conta** você troca a senha sem sair do portal; a troca exige a senha atual e exibe uma **nova chave de recuperação** uma única vez. Todas as alterações exigem sessão autenticada e token CSRF.
 
 Um subdomínio exclusivo para o painel é opcional: configure SSL, Force HTTPS e proxy para `http://127.0.0.1:8081`, com os mesmos limites de upload e sem cache. Use somente HTTPS em produção; `MANAGER_HTTPS=1` impede login via HTTP por marcar o cookie como Secure. Para desenvolvimento local ou uso exclusivamente por túnel HTTP, mantenha `MANAGER_HTTPS=0` (padrão). Não exponha 8081 diretamente na internet.
 

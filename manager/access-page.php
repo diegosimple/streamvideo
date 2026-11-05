@@ -1,9 +1,9 @@
 <?php
 if (!isset($screen, $nonce)) { http_response_code(404); exit; }
-$titles = ['login' => 'Acesse seus vídeos', 'setup' => 'Configure seu acesso', 'recover' => 'Recupere seu acesso'];
+$titles = ['login' => 'Acesse sua biblioteca', 'setup' => 'Configure seu acesso', 'recover' => 'Recupere seu acesso'];
 $descriptions = [
-    'login' => 'Entre para organizar, publicar e compartilhar seus vídeos.',
-    'setup' => 'Crie o administrador que vai gerenciar sua biblioteca de vídeos.',
+    'login' => 'Entre para organizar, publicar e compartilhar seus vídeos com links protegidos.',
+    'setup' => 'Crie o administrador que vai gerenciar a biblioteca de streaming Zeus PRO.',
     'recover' => 'Use a chave guardada na criação da conta para definir uma nova senha.',
 ];
 ?>
@@ -12,7 +12,7 @@ $descriptions = [
 <title><?= escape($titles[$screen]) ?> · Zeus PRO</title>
 <link rel="icon" href="/img/icone-erp.ico" type="image/x-icon">
 <link rel="stylesheet" href="/access.css">
-</head><body><main class="access-card">
+</head><body class="access-body"><main class="access-card">
 <img class="brand" src="/img/imgLogo.png" alt="Zeus PRO" width="400" height="100">
 <p class="eyebrow">Streaming · Zeus PRO</p>
 <?php if ($recoveryCode): ?>

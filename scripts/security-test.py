@@ -123,10 +123,10 @@ try:
             prefix = 'smoke-' + secrets.token_hex(5)
             page, _ = upload(browser, token, prefix + '<b>title.' + ext, fixture)
             assert (prefix + '<b>').encode() not in page
-            row = next(row for row in page.decode().split('<tr>') if prefix in row)
-            video_id = re.search(r'id="url_(\d+)"', row)[1]
+            card = next(card for card in page.decode().split('<article ') if prefix in card)
+            video_id = re.search(r'id="url_(\d+)"', card)[1]
             created_ids.append(video_id)
-            signed_url = html.unescape(re.search(r'value="(https://streaming[^\"]+)"', row)[1])
+            signed_url = html.unescape(re.search(r'value="(https://streaming[^\"]+)"', card)[1])
             query = urllib.parse.urlsplit(signed_url).query
             embed, headers = fetch(anonymous, PUBLIC + '/embed.php?' + query)
             assert b'<video controls' in embed and headers.get('X-Frame-Options') is None
@@ -142,7 +142,7 @@ try:
             values = urllib.parse.parse_qs(query)
             values['expires'] = ['1']
             fetch(anonymous, PUBLIC + '/media.php?' + urllib.parse.urlencode(values, doseq=True), expected=403)
-            filename = html.unescape(re.search(r'<td>(smoke-[^<]+)</td>', row)[1])
+            filename = html.unescape(re.search(r'data-filename="([^"]+)"', card)[1])
             fetch(anonymous, PUBLIC + '/videos/' + urllib.parse.quote(filename), expected=404)
             fetch(anonymous, PUBLIC + '/protected-videos/' + urllib.parse.quote(filename), expected=404)
             post(browser, {'action': 'revoke', 'id': video_id, 'csrf': token})
@@ -150,13 +150,28 @@ try:
             post(browser, {'action': 'delete', 'id': video_id, 'csrf': token})
             created_ids.remove(video_id)
             docker('compose', 'exec', '-T', 'rtmp-server', 'rm', '-f', container_path)
-    page, _ = post(browser, {'action': 'logout', 'csrf': token})
+    # Troca de senha no portal exige a senha atual e emite nova chave de recuperação.
+    new_password = secrets.token_urlsafe(24)
+    page, _ = fetch(browser, MANAGER)
+    token = csrf(page)
+    post(browser, {
+        'action': 'password', 'csrf': token, 'current_password': 'wrong',
+        'password': new_password, 'password_confirmation': new_password,
+    }, expected=401)
+    page, _ = post(browser, {
+        'action': 'password', 'csrf': token, 'current_password': password,
+        'password': new_password, 'password_confirmation': new_password,
+    })
+    assert b'id="recovery-code"' in page
+    assert b'name="video_file"' in page
+    password = new_password
+    page, _ = post(browser, {'action': 'logout', 'csrf': csrf(page)})
     assert b'name="password"' in page
     post(browser, {'action': 'upload', 'csrf': token}, expected=403)
     for index in range(11):
         page, _ = fetch(anonymous, MANAGER)
         post(anonymous, {'action': 'login', 'username': 'smoke-admin', 'password': 'wrong', 'csrf': csrf(page)}, expected=401 if index < 10 else 429)
-    print('PASS: branded assets, protected setup, setup closes after creation, recovery key rotation, old session/password invalidation, login/logout, CSRF, rate limit, MP4/MOV validation, HTML rejection, signed playback, ranges, revocation, direct-file blocking, deletion')
+    print('PASS: branded assets, protected setup, setup closes after creation, recovery key rotation, password change, old session/password invalidation, login/logout, CSRF, rate limit, MP4/MOV validation, HTML rejection, signed playback, ranges, revocation, direct-file blocking, deletion')
 finally:
     for video_id in created_ids:
         if token:

@@ -1,12 +1,29 @@
 # Identidade visual do Streamvideo
 
-Escopo: integrar as imagens fornecidas pelo usuário e manter uma linguagem comum entre login, configuração, recuperação e biblioteca, sem redesenhar o produto inteiro.
+Escopo: portal de gestão com linguagem de catálogo (inspiração Netflix) e telas de acesso alinhadas à marca Zeus PRO.
 
-- Marca: `img/imgLogo.png`, preservada sem filtros ou distorção; favicon `img/icone-erp.ico`.
-- Base: azul existente `#0A2D6E`, com cartão claro nas telas de acesso para dar contraste ao texto escuro da logo.
-- Hierarquia: logo, identificação do serviço, título da tarefa, explicação curta e formulário. Uma ação principal por tela.
-- Tipografia: Arial/sans-serif do projeto; títulos 23–25 px, campos de 16 px e rótulos explícitos.
-- Estados: erro junto ao formulário, setup encerrado após cadastro e chave de recuperação em área selecionável exibida uma vez.
-- Responsividade: cartão de até 480 px, campos de largura integral e margens reduzidas no celular.
-- Segurança visual: senhas e chaves em campos ocultos, nenhum valor sensível em URLs; conteúdo variável escapado e estilos locais permitidos pela CSP.
-- Biblioteca: preservar as ações existentes e incluir logo em faixa clara com a ação Sair. Player mantém o foco no vídeo e recebe favicon.
+## Marca e cores
+
+- Logo: `img/imgLogo.png` (sem filtros que distorçam a marca); favicon `img/icone-erp.ico`.
+- Primárias: `#0057BA`, `#0076DD`.
+- Destaques: `#17BB2E` (sucesso), `#EFE778` (alerta / ênfase).
+- Fundo escuro de catálogo: `#050b16` → `#071428`, cards `#0d1b33`.
+
+## Hierarquia
+
+- Login / setup / recuperar: cartão central escuro, faixa gradiente da marca, uma ação principal.
+- Biblioteca autenticada: topbar fixa (logo + conta + sair), hero com upload, grade de capas estilo catálogo.
+- Conta: menu “Trocar senha” no próprio portal; gera nova chave de recuperação exibida uma vez.
+- Player (`embed.php`): foco no vídeo, fundo preto, favicon da marca.
+
+## Tipografia e estados
+
+- Tipografia do sistema (Segoe UI / system-ui / Arial).
+- Erro e sucesso em banners próximos à ação; capa do card usa o 1º quadro via `media.php` assinado.
+- Responsivo: grade fluida, upload empilhado no celular, menu de conta em painel absoluto.
+
+## Segurança visual
+
+- Senhas e chaves em campos ocultos; conteúdo variável escapado.
+- Estilos em `/access.css` (`style-src 'self'`); scripts do painel com nonce CSP.
+- Links assinados continuam válidos por 7 dias; revogação e exclusão permanecem nas ações do card.

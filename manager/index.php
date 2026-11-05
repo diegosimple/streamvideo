@@ -25,6 +25,7 @@ function registerVideo(PDO $db, string $filename): void {
     $db->prepare('INSERT OR IGNORE INTO videos (title, filename) VALUES (?, ?)')->execute([$filename, $filename]);
 }
 $error = null;
+$freshRecovery = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if (!validCsrf()) {
@@ -56,13 +57,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             chmod($videoDir . $filename, 0644);
             registerVideo($db, $filename);
             $_SESSION['message'] = 'Upload concluído.';
+        } elseif (($_POST['action'] ?? '') === 'password') {
+            $currentPassword = input('current_password');
+            $newPassword = input('password');
+            $confirm = input('password_confirmation');
+            if ($newPassword !== $confirm) {
+                throw new RuntimeException('A confirmação da senha não corresponde.');
+            }
+            if (strlen($currentPassword) > 1024 || str_contains($currentPassword, "\0")
+                || !password_verify($currentPassword, $admin['hash'])) {
+                if (!consumeAuthAttempt()) {
+                    http_response_code(429);
+                    header('Retry-After: 900');
+                    throw new RuntimeException('Muitas tentativas. Aguarde 15 minutos antes de tentar novamente.');
+                }
+                http_response_code(401);
+                throw new RuntimeException('Senha atual incorreta.');
+            }
+            validateCredentials($admin['username'], $newPassword);
+            $result = withAdminLock(function () use ($admin, $newPassword, $currentPassword): array {
+                $current = readAdmin();
+                if ($current === null || !hash_equals($current['username'], $admin['username'])
+                    || !password_verify($currentPassword, $current['hash'])) {
+                    http_response_code(401);
+                    throw new RuntimeException('Senha atual incorreta.');
+                }
+                $result = newAdmin($current['username'], $newPassword);
+                saveAdmin($result['admin']);
+                return $result;
+            });
+            clearAuthAttempts();
+            $newFingerprint = hash('sha256', $result['admin']['username'] . $result['admin']['hash']);
+            session_regenerate_id(true);
+            $_SESSION['auth'] = $newFingerprint;
+            $_SESSION['last_seen'] = time();
+            $_SESSION['csrf'] = bin2hex(random_bytes(32));
+            $_SESSION['recovery_code'] = $result['code'];
+            $_SESSION['message'] = 'Senha atualizada com sucesso.';
         } else {
             throw new RuntimeException('Ação inválida.');
         }
         header('Location: /', true, 303);
         exit;
     } catch (RuntimeException $exception) {
-        http_response_code(400);
+        if (http_response_code() < 400) http_response_code(400);
         $error = $exception->getMessage();
     }
 }
@@ -72,89 +110,155 @@ foreach (array_merge(glob($videoDir . '*.mp4') ?: [], glob($videoDir . '*.mov') 
 $videos = $db->query('SELECT * FROM videos ORDER BY id DESC')->fetchAll();
 $message = $_SESSION['message'] ?? null;
 unset($_SESSION['message']);
+if (isset($_SESSION['recovery_code'])) {
+    $freshRecovery = $_SESSION['recovery_code'];
+    unset($_SESSION['recovery_code']);
+}
+$adminName = $admin['username'] ?? 'admin';
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Gestor de Vídeos VOD - Zeus PRO</title>
+    <title>Biblioteca · Streaming Zeus PRO</title>
     <link rel="icon" href="/img/icone-erp.ico" type="image/x-icon">
-    <style nonce="<?= escape($nonce) ?>">
-        body { font-family: Arial, sans-serif; background: #0A2D6E; color: white; padding: 20px; }
-        .container { max-width: 1100px; margin: 0 auto; background: #070B14; padding: 20px; border-radius: 8px; }
-        .table-wrap { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #1B5FC1; }
-        button { padding: 8px 12px; background: #1B5FC1; color: white; border-radius: 4px; border: none; cursor: pointer; }
-        .danger { background: #EAA20C; color: #000; }
-        .upload-box { background: #0D1424; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-        input[type="text"] { min-width: 240px; width: 100%; box-sizing: border-box; padding: 8px; background: #0A2D6E; color: white; border: 1px solid #1B5FC1; }
-        .message { color: #EAA20C; }
-        td form { display: inline; }
-        .brand-bar { display: flex; justify-content: space-between; align-items: center; gap: 20px; background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 28px; }
-        .brand-bar img { display: block; width: 240px; max-width: 65%; height: auto; }
-        h1 { font-size: 26px; margin-bottom: 24px; }
-        textarea { max-width: 100%; }
-        @media (max-width: 600px) { body { padding: 10px; } .container { padding: 16px; } .brand-bar { padding: 12px; } h1 { font-size: 22px; } }
-    </style>
+    <link rel="stylesheet" href="/access.css">
 </head>
-<body>
-<main class="container">
-    <header class="brand-bar">
-    <img src="/img/imgLogo.png" alt="Zeus PRO" width="400" height="100">
-    <form method="post">
-        <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
-        <input type="hidden" name="action" value="logout">
-        <button type="submit">Sair</button>
-    </form>
-    </header>
-    <h1>Biblioteca de vídeos</h1>
-    <?php if ($error || $message): ?><p class="message" role="status"><?= escape($error ?? $message) ?></p><?php endif; ?>
-    <div class="upload-box">
-        <form method="post" enctype="multipart/form-data">
-            <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
-            <input type="hidden" name="action" value="upload">
-            <label for="video_file">Enviar vídeo MP4 ou MOV (até 500 MB):</label>
-            <input id="video_file" type="file" name="video_file" accept="video/mp4,video/quicktime,.mp4,.mov" required>
-            <button type="submit">Enviar vídeo</button>
-        </form>
-    </div>
-    <p>Gravações aparecem após a conversão para MP4. Atualize a página para sincronizar.</p>
-    <p>Links e iframes são válidos por 7 dias a partir da geração. Qualquer pessoa com o link pode assistir nesse período.</p>
-    <div class="table-wrap"><table>
-        <thead><tr><th>ID</th><th>Arquivo</th><th>Link do player (7 dias)</th><th>Ações</th></tr></thead>
-        <tbody>
-        <?php foreach ($videos as $video): ?>
-            <tr>
-                <td><?= (int) $video['id'] ?></td>
-                <td><?= escape($video['filename']) ?></td>
-                <td><input type="text" id="url_<?= (int) $video['id'] ?>" aria-label="URL de <?= escape($video['filename']) ?>" value="<?= escape($baseUrl . playbackQuery($video, $playbackKey)) ?>" readonly></td>
-                <td>
-                    <button type="button" data-copy="<?= (int) $video['id'] ?>">Copiar</button>
-                    <button type="button" data-embed="<?= (int) $video['id'] ?>">Copiar iframe</button>
+<body class="panel-body">
+<header class="topbar">
+    <div class="topbar-inner">
+        <div class="brand-lockup">
+            <img src="/img/imgLogo.png" alt="Zeus PRO" width="400" height="100">
+            <span class="tag">Streaming</span>
+        </div>
+        <div class="top-actions">
+            <details class="account-menu">
+                <summary class="btn btn-ghost btn-sm" aria-label="Conta">Conta · <?= escape($adminName) ?></summary>
+                <div class="account-panel">
+                    <h2>Trocar senha</h2>
+                    <p>Altere a senha sem sair do portal. Uma nova chave de recuperação será gerada.</p>
                     <form method="post">
                         <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
-                        <input type="hidden" name="action" value="revoke">
-                        <input type="hidden" name="id" value="<?= (int) $video['id'] ?>">
-                        <button type="submit">Revogar links</button>
+                        <input type="hidden" name="action" value="password">
+                        <label for="current_password">Senha atual</label>
+                        <input id="current_password" type="password" name="current_password" autocomplete="current-password" maxlength="1024" required>
+                        <label for="new_password">Nova senha</label>
+                        <input id="new_password" type="password" name="password" autocomplete="new-password" maxlength="72" required>
+                        <label for="password_confirmation">Confirme a nova senha</label>
+                        <input id="password_confirmation" type="password" name="password_confirmation" autocomplete="new-password" maxlength="72" required>
+                        <div class="panel-actions">
+                            <button type="submit" class="btn-primary">Salvar senha</button>
+                        </div>
                     </form>
-                    <form method="post" data-delete>
-                        <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
-                        <input type="hidden" name="action" value="delete">
-                        <input type="hidden" name="id" value="<?= (int) $video['id'] ?>">
-                        <button type="submit" class="danger">Apagar</button>
-                    </form>
-                </td>
-            </tr>
+                </div>
+            </details>
+            <form method="post">
+                <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
+                <input type="hidden" name="action" value="logout">
+                <button type="submit" class="btn btn-ghost btn-sm">Sair</button>
+            </form>
+        </div>
+    </div>
+</header>
+
+<main class="panel-shell">
+    <section class="hero">
+        <div>
+            <h1>Biblioteca de vídeos</h1>
+            <p>Gerencie aulas e gravações com visual de catálogo. Gere links assinados, incorpore no Zeus e revogue acessos quando precisar.</p>
+        </div>
+        <div class="hero-meta">
+            <span class="chip"><strong><?= count($videos) ?></strong> título(s)</span>
+            <span class="chip">Links válidos por <strong>7 dias</strong></span>
+            <span class="chip">MP4 / MOV até <strong>500 MB</strong></span>
+        </div>
+        <form class="upload-rail" method="post" enctype="multipart/form-data">
+            <div>
+                <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
+                <input type="hidden" name="action" value="upload">
+                <label for="video_file">Adicionar título à biblioteca</label>
+                <input id="video_file" type="file" name="video_file" accept="video/mp4,video/quicktime,.mp4,.mov" required>
+            </div>
+            <button type="submit" class="btn-primary">Enviar vídeo</button>
+        </form>
+    </section>
+
+    <?php if ($freshRecovery): ?>
+        <aside class="recovery-banner" role="status">
+            <h2>Nova chave de recuperação</h2>
+            <p>Guarde esta chave agora. Ela substitui a anterior e só aparece uma vez após a troca de senha.</p>
+            <code id="recovery-code"><?= escape($freshRecovery) ?></code>
+        </aside>
+    <?php endif; ?>
+
+    <?php if ($error || $message): ?>
+        <p class="flash<?= $error ? ' is-error' : '' ?>" role="status"><?= escape($error ?? $message) ?></p>
+    <?php endif; ?>
+
+    <div class="section-head">
+        <div>
+            <h2>Catálogo</h2>
+            <p>Gravações ao vivo aparecem após a conversão para MP4. Atualize a página para sincronizar.</p>
+        </div>
+    </div>
+
+    <section class="video-grid" aria-label="Catálogo de vídeos">
+        <?php foreach ($videos as $video):
+            $query = playbackQuery($video, $playbackKey);
+            $playerUrl = $baseUrl . $query;
+            $mediaUrl = 'https://streaming.zeuspro.com.br/media.php?' . $query;
+            $label = $video['title'] !== '' ? $video['title'] : $video['filename'];
+            ?>
+            <article class="video-card" data-filename="<?= escape($video['filename']) ?>">
+                <div class="video-poster">
+                    <video muted playsinline preload="metadata" src="<?= escape($mediaUrl) ?>" aria-hidden="true" tabindex="-1"></video>
+                    <span class="poster-badge">ID <?= (int) $video['id'] ?></span>
+                    <div class="poster-play" aria-hidden="true"><span>▶</span></div>
+                </div>
+                <div class="video-body">
+                    <h3 title="<?= escape($label) ?>"><?= escape($label) ?></h3>
+                    <div class="meta">Arquivo · <?= escape($video['filename']) ?></div>
+                    <label class="sr-only" for="url_<?= (int) $video['id'] ?>">URL do player</label>
+                    <input type="text" id="url_<?= (int) $video['id'] ?>" value="<?= escape($playerUrl) ?>" readonly>
+                    <div class="video-actions">
+                        <button type="button" class="btn btn-primary btn-sm" data-copy="<?= (int) $video['id'] ?>">Copiar link</button>
+                        <button type="button" class="btn btn-ghost btn-sm" data-embed="<?= (int) $video['id'] ?>">Copiar iframe</button>
+                        <form method="post">
+                            <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
+                            <input type="hidden" name="action" value="revoke">
+                            <input type="hidden" name="id" value="<?= (int) $video['id'] ?>">
+                            <button type="submit" class="btn btn-warn btn-sm span-2">Revogar links</button>
+                        </form>
+                        <form method="post" data-delete>
+                            <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="id" value="<?= (int) $video['id'] ?>">
+                            <button type="submit" class="btn btn-danger btn-sm span-2">Apagar</button>
+                        </form>
+                    </div>
+                </div>
+            </article>
         <?php endforeach; ?>
-        <?php if (!$videos): ?><tr><td colspan="4">Nenhum vídeo disponível. Envie um MP4/MOV ou inicie uma transmissão.</td></tr><?php endif; ?>
-        </tbody>
-    </table></div>
-    <p id="copy-status" role="status"></p>
-    <textarea id="embed-code" aria-label="Código iframe para copiar" rows="4" cols="60" readonly hidden></textarea>
+        <?php if (!$videos): ?>
+            <div class="empty-state">
+                <strong>Nenhum título ainda</strong>
+                Envie um MP4/MOV ou inicie uma transmissão RTMP para popular o catálogo.
+            </div>
+        <?php endif; ?>
+    </section>
+
+    <p id="copy-status" role="status" aria-live="polite"></p>
+    <textarea id="embed-code" class="sr-only" aria-label="Código iframe para copiar" rows="4" cols="60" readonly></textarea>
 </main>
 <script nonce="<?= escape($nonce) ?>">
+const status = document.getElementById('copy-status');
+function flash(message) {
+    status.textContent = message;
+    status.classList.add('is-on');
+    clearTimeout(flash._t);
+    flash._t = setTimeout(() => status.classList.remove('is-on'), 2200);
+}
 document.querySelectorAll('[data-copy]').forEach(button => {
     button.addEventListener('click', () => copyUrl(button.dataset.copy));
 });
@@ -169,10 +273,10 @@ document.querySelectorAll('[data-embed]').forEach(button => {
         output.value = frame.outerHTML; output.hidden = false;
         try {
             await navigator.clipboard.writeText(output.value);
-            document.getElementById('copy-status').textContent = 'Iframe copiado.';
+            flash('Iframe copiado.');
         } catch {
             output.select();
-            document.getElementById('copy-status').textContent = 'Pressione Ctrl+C para copiar o iframe selecionado.';
+            flash('Pressione Ctrl+C para copiar o iframe.');
         }
     });
 });
@@ -185,10 +289,10 @@ async function copyUrl(id) {
     const input = document.getElementById('url_' + id);
     try {
         await navigator.clipboard.writeText(input.value);
-        document.getElementById('copy-status').textContent = 'URL copiada.';
+        flash('URL copiada.');
     } catch {
         input.select();
-        document.getElementById('copy-status').textContent = 'Pressione Ctrl+C para copiar a URL selecionada.';
+        flash('Pressione Ctrl+C para copiar a URL.');
     }
 }
 </script>
