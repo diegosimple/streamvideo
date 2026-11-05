@@ -123,7 +123,7 @@ $adminName = $admin['username'] ?? 'admin';
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Biblioteca · Streaming Zeus PRO</title>
     <link rel="icon" href="/img/icone-erp.ico" type="image/x-icon">
-    <link rel="stylesheet" href="/access.css">
+    <link rel="stylesheet" href="/access.css?v=20261105">
 </head>
 <body class="panel-body">
 <header class="topbar">

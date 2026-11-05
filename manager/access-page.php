@@ -11,7 +11,7 @@ $descriptions = [
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= escape($titles[$screen]) ?> · Zeus PRO</title>
 <link rel="icon" href="/img/icone-erp.ico" type="image/x-icon">
-<link rel="stylesheet" href="/access.css">
+<link rel="stylesheet" href="/access.css?v=20261105">
 </head><body class="access-body"><main class="access-card">
 <img class="brand" src="/img/imgLogo.png" alt="Zeus PRO" width="400" height="100">
 <p class="eyebrow">Streaming · Zeus PRO</p>
