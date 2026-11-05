@@ -23,7 +23,7 @@ cd /www/wwwroot/streaming.zeuspro.com.br
 mkdir -p videos
 sudo chown 33:33 videos
 sudo chmod 775 videos
-docker compose up -d --build
+docker compose build rtmp-server && docker compose build video-manager && docker compose up -d --no-build
 docker compose ps
 ```
 
@@ -34,11 +34,32 @@ Para atualizar uma instalação existente após publicar alterações no GitHub:
 ```bash
 cd /www/wwwroot/streaming.zeuspro.com.br
 git pull --ff-only origin main
-docker compose up -d --build --force-recreate
+docker compose build rtmp-server && docker compose build video-manager && docker compose up -d --no-build --force-recreate
 docker compose ps
 ```
 
 Se o `git pull` falhar, resolva o erro antes de executar os comandos seguintes. A recriação aplica também mudanças nas configurações montadas dos serviços e preserva os vídeos, o `.env` e o volume de dados. Ela interrompe transmissões em andamento; faça a atualização fora do horário das lives.
+
+### Se a VPS travar ou o terminal desconectar durante o build
+
+O FFmpeg instala várias dependências. Construir os dois serviços simultaneamente pode aumentar o pico de uso de memória, CPU e disco. Os comandos acima constroem um serviço por vez e só iniciam os contêineres se ambos os builds terminarem com sucesso. Isso reduz a concorrência, mas não garante que os recursos da VPS sejam suficientes.
+
+“Tentando reconectar” no terminal do aaPanel não confirma reinicialização da VPS. Depois de reconectar, verifique:
+
+```bash
+uptime -s
+free -h
+swapon --show
+df -h / /var/lib/docker
+sudo journalctl -k -b --no-pager -n 150
+sudo journalctl -k -b -1 --no-pager -n 150
+```
+
+Compare o horário de inicialização com o momento da falha. Nos logs, procure `Out of memory`, `oom-kill`, `Killed process`, erros de disco ou `panic`. `-b -1` consulta a inicialização anterior; ela pode não estar disponível se o journal não for persistente. Ausência de logs anteriores não prova que não houve falha. Se a VPS realmente reiniciou sem registrar uma causa, confira também os eventos e gráficos do provedor.
+
+Antes de repetir o build, confirme que a execução anterior terminou; não inicie outra enquanto ela ainda estiver trabalhando. Se houver falta de memória, avalie RAM/swap conforme os recursos e o espaço livre da VPS, ou construa as imagens em outra máquina compatível e distribua-as por um registro. Não remova volumes ou arquivos de vídeos para tentar corrigir o build.
+
+Referências: [paralelismo do Docker Compose](https://docs.docker.com/reference/cli/docker/compose/#configuring-parallelism) e [consulta de inicializações com journalctl](https://www.freedesktop.org/software/systemd/man/latest/journalctl.html).
 
 ## Primeiro acesso em /setup
 
