@@ -41,7 +41,7 @@ $descriptions = [
         <label for="password"><?= $screen === 'recover' ? 'Nova senha' : 'Senha' ?></label>
         <input id="password" type="password" name="password" autocomplete="<?= $screen === 'login' ? 'current-password' : 'new-password' ?>" maxlength="<?= $screen === 'login' ? '1024' : '72' ?>" required>
         <?php if ($screen !== 'login'): ?>
-            <p class="help">Use uma frase exclusiva com pelo menos 12 caracteres. Limite de 72 bytes; acentos ocupam mais de um byte.</p>
+            <p class="help">Use uma senha com pelo menos 8 caracteres. Limite de 72 bytes; acentos ocupam mais de um byte.</p>
             <label for="password_confirmation">Confirme a senha</label><input id="password_confirmation" type="password" name="password_confirmation" autocomplete="new-password" maxlength="72" required>
         <?php endif; ?>
         <button type="submit"><?= ['login' => 'Entrar', 'setup' => 'Criar administrador', 'recover' => 'Redefinir senha'][$screen] ?></button>

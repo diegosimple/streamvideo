@@ -29,6 +29,27 @@ docker compose ps
 
 Os serviços escrevem em videos como www-data (UID 33). Não é necessário chmod 777. O SQLite, o hash da senha e a chave de assinatura ficam no volume manager-data, fora da raiz pública. O build verifica PDO SQLite e fileinfo e instala FFprobe para verificar o conteúdo dos uploads.
 
+### Proxy HTTPS no Apache do aaPanel
+
+O Apache instalado pelo aaPanel roda no host da VPS, fora dos contêineres. Por isso a configuração dele fica em um script versionado do projeto, não no Dockerfile ou no Compose. Depois de iniciar os contêineres e criar o site/SSL no aaPanel, execute na pasta clonada:
+
+```bash
+bash scripts/configurar-proxy-aapanel.sh
+```
+
+O script verifica o VirtualHost específico do domínio e os módulos Apache de proxy, grava uma extensão persistente em `extension/`, valida a configuração e só reinicia o Apache se a validação passar. Se o Apache usa caminhos diferentes, informe-os, por exemplo, `AAPANEL_HTTPD=/caminho/httpd AAPANEL_HTTPD_SERVICE=/caminho/httpd-service bash scripts/configurar-proxy-aapanel.sh`.
+
+Depois verifique `curl -k -sS -o /dev/null -w 'HTTPS: %{http_code}\n' https://streaming.zeuspro.com.br/setup`; o esperado é `200`. Em produção HTTPS, defina `MANAGER_HTTPS=1` no `.env` antes de iniciar o painel para usar cookies de sessão `Secure`:
+
+```bash
+if [ -f .env ] && grep -q '^MANAGER_HTTPS=' .env; then
+    sed -i 's/^MANAGER_HTTPS=.*/MANAGER_HTTPS=1/' .env
+else
+    printf '%s\n' 'MANAGER_HTTPS=1' >> .env
+fi
+docker compose up -d --no-build video-manager
+```
+
 Para atualizar uma instalação existente após publicar alterações no GitHub:
 
 ```bash
@@ -71,7 +92,7 @@ docker compose exec -T --user www-data video-manager php /opt/streamvideo/setup-
 
 Abra `https://streaming.zeuspro.com.br/setup`, informe essa chave, escolha o usuário e confirme a senha. Sem administrador, o login redireciona automaticamente para `/setup`. A chave comprova acesso à VPS e impede que outra pessoa assuma o cadastro inicial apenas por conhecer a URL.
 
-Ao concluir, **guarde a chave de recuperação exibida na tela** em um gerenciador de senhas. Ela aparece somente uma vez. O setup é fechado após a criação da conta e a chave de instalação é removida. Não existe senha padrão ou cadastro público de novos administradores. Usuários aceitam 3–80 letras, números, ponto, hífen ou sublinhado; senhas aceitam 12–72 bytes.
+Ao concluir, **guarde a chave de recuperação exibida na tela** em um gerenciador de senhas. Ela aparece somente uma vez. O setup é fechado após a criação da conta e a chave de instalação é removida. Não existe senha padrão ou cadastro público de novos administradores. Usuários aceitam 3–80 letras, números, ponto, hífen ou sublinhado; senhas aceitam pelo menos 8 caracteres e até 72 bytes.
 
 No computador local, as mesmas telas estão em `http://localhost:8081/setup` e `http://localhost:8081/recuperar`. O ambiente local usa HTTP; na VPS use HTTPS e `MANAGER_HTTPS=1`.
 
@@ -82,7 +103,7 @@ No login, clique em **Esqueci minha senha**, ou acesse `https://streaming.zeuspr
 Não há envio de e-mail: a prova de acesso é a chave de recuperação. Se perdeu a chave, se a conta foi criada por uma versão antiga ou se precisa restaurar o acesso pelo terminal, execute no Bash da VPS:
 
 ```bash
-read -rsp 'Senha do administrador (12–72 bytes): ' ADMIN_PASSWORD; echo
+read -rsp 'Senha do administrador (mínimo 8 caracteres; máximo 72 bytes): ' ADMIN_PASSWORD; echo
 printf '%s\n' "$ADMIN_PASSWORD" | docker compose exec -T --user www-data video-manager php /opt/streamvideo/setup-admin.php admin
 unset ADMIN_PASSWORD
 ```

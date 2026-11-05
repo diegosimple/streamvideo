@@ -37,8 +37,8 @@ function validateCredentials(string $username, string $password): void {
     if (!preg_match('/\A[a-zA-Z0-9_.-]{3,80}\z/', $username)) {
         throw new RuntimeException('Use um usuário de 3 a 80 caracteres: letras, números, ponto, hífen ou sublinhado.');
     }
-    if (strlen($password) < 12 || strlen($password) > 72 || str_contains($password, "\0")) {
-        throw new RuntimeException('A senha deve ter entre 12 e 72 bytes. Use uma frase longa e exclusiva.');
+    if (strlen($password) < 8 || strlen($password) > 72 || str_contains($password, "\0")) {
+        throw new RuntimeException('A senha deve ter pelo menos 8 caracteres e no máximo 72 bytes.');
     }
 }
 

@@ -4,8 +4,8 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require __DIR__ . '/credentials.php';
 $username = $argv[1] ?? '';
 $password = rtrim((string) fgets(STDIN), "\r\n");
-if (!preg_match('/\A[a-zA-Z0-9_.-]{3,80}\z/', $username) || strlen($password) < 12 || strlen($password) > 72) {
-    fwrite(STDERR, "Use um usuário de 3–80 letras/números/._- e uma senha de 12–72 bytes via stdin.\n");
+if (!preg_match('/\A[a-zA-Z0-9_.-]{3,80}\z/', $username) || strlen($password) < 8 || strlen($password) > 72) {
+    fwrite(STDERR, "Use um usuário de 3–80 letras/números/._- e uma senha de pelo menos 8 caracteres (máximo 72 bytes) via stdin.\n");
     exit(1);
 }
 try {
