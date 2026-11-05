@@ -4,7 +4,19 @@ Streaming RTMP/HLS e hospedagem de MP4/MOV da Zeus PRO para https://streaming.ze
 
 ## Instalação na VPS
 
-Requer Docker Engine com Compose e DNS apontando para a VPS. Copie este projeto para `/www/wwwroot/streaming.zeuspro.com.br`.
+Requer Git, Docker Engine com Compose e DNS apontando para a VPS. Antes de instalar, envie as alterações locais ao GitHub com `git push`.
+
+Conecte-se à VPS por SSH e clone a branch `main` na pasta do domínio:
+
+```bash
+mkdir -p /www/wwwroot
+git clone --branch main https://github.com/diegosimple/streamvideo.git /www/wwwroot/streaming.zeuspro.com.br
+cd /www/wwwroot/streaming.zeuspro.com.br
+```
+
+A pasta de destino deve estar ausente ou vazia. Se o aaPanel já criou arquivos nela, preserve-os e organize a pasta antes de clonar. Se o repositório for privado, autentique-se no GitHub com um token ou uma chave SSH autorizada; não coloque o token na URL do clone.
+
+Depois do clone, prepare a pasta de vídeos e inicie os serviços:
 
 ```bash
 cd /www/wwwroot/streaming.zeuspro.com.br
@@ -16,6 +28,17 @@ docker compose ps
 ```
 
 Os serviços escrevem em videos como www-data (UID 33). Não é necessário chmod 777. O SQLite, o hash da senha e a chave de assinatura ficam no volume manager-data, fora da raiz pública. O build verifica PDO SQLite e fileinfo e instala FFprobe para verificar o conteúdo dos uploads.
+
+Para atualizar uma instalação existente após publicar alterações no GitHub:
+
+```bash
+cd /www/wwwroot/streaming.zeuspro.com.br
+git pull --ff-only origin main
+docker compose up -d --build --force-recreate
+docker compose ps
+```
+
+Se o `git pull` falhar, resolva o erro antes de executar os comandos seguintes. A recriação aplica também mudanças nas configurações montadas dos serviços e preserva os vídeos, o `.env` e o volume de dados. Ela interrompe transmissões em andamento; faça a atualização fora do horário das lives.
 
 ## Primeiro acesso em /setup
 
