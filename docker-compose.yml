@@ -1,0 +1,37 @@
+services:
+  rtmp-server:
+    build: .
+    container_name: zeuspro-streaming
+    ports:
+      - "1935:1935"
+      - "127.0.0.1:${VIDEO_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./videos:/videos
+    restart: unless-stopped
+
+  video-manager:
+    build: ./manager
+    container_name: zeuspro-manager
+    environment:
+      MANAGER_HTTPS: ${MANAGER_HTTPS:-0}
+    ports:
+      - "127.0.0.1:8081:80"
+    volumes:
+      - ./manager/index.php:/var/www/html/index.php:ro
+      - ./manager/auth.php:/var/www/html/auth.php:ro
+      - ./manager/credentials.php:/var/www/html/credentials.php:ro
+      - ./manager/access-page.php:/var/www/html/access-page.php:ro
+      - ./manager/access.css:/var/www/html/access.css:ro
+      - ./img:/var/www/html/img:ro
+      - ./manager/upload.php:/var/www/html/upload.php:ro
+      - ./manager/playback.php:/var/www/html/playback.php:ro
+      - ./manager/embed.php:/var/www/html/embed.php:ro
+      - ./manager/media.php:/var/www/html/media.php:ro
+      - ./videos:/videos
+      - manager-data:/var/lib/streamvideo
+      - ./config/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
+    restart: unless-stopped
+
+volumes:
+  manager-data:

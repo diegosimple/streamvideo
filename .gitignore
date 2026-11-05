@@ -1,0 +1,7 @@
+/videos/*
+!/videos/.gitkeep
+*.sqlite
+*.sqlite-*
+.env
+/artifacts/
+/.browser-preview/
