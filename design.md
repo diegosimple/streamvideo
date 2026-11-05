@@ -26,4 +26,4 @@ Escopo: portal de gestão com linguagem de catálogo (inspiração Netflix) e te
 
 - Senhas e chaves em campos ocultos; conteúdo variável escapado.
 - Estilos em `/access.css` (`style-src 'self'`); scripts do painel com nonce CSP.
-- Links assinados continuam válidos por 7 dias; revogação e exclusão permanecem nas ações do card.
+- Links assinados não expiram; revogação e exclusão permanecem nas ações do card.

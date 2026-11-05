@@ -25,15 +25,15 @@ function playbackKey(bool $create = false): string {
     return $key;
 }
 
-function playbackSignature(int $id, int $expires, int $version, string $key): string {
-    return hash_hmac('sha256', "video:$id:$expires:$version", $key);
+function playbackSignature(int $id, int $version, string $key, ?int $expires = null): string {
+    $expiry = $expires === null ? 'permanent' : (string) $expires;
+    return hash_hmac('sha256', "video:$id:$expiry:$version", $key);
 }
 
 function playbackQuery(array $video, string $key): string {
-    $expires = time() + 7 * 86400;
     return http_build_query([
-        'id' => (int) $video['id'], 'expires' => $expires,
-        'signature' => playbackSignature((int) $video['id'], $expires, (int) $video['token_version'], $key),
+        'id' => (int) $video['id'],
+        'signature' => playbackSignature((int) $video['id'], (int) $video['token_version'], $key),
     ]);
 }
 
@@ -43,22 +43,27 @@ function authorizedPlayback(): array {
     header('Referrer-Policy: no-referrer');
     try {
         $id = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        $expires = filter_var($_GET['expires'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $expires = isset($_GET['expires'])
+            ? filter_var($_GET['expires'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            : null;
         $signature = $_GET['signature'] ?? '';
-        if (!$id || !$expires || $expires < time() || !is_string($signature)
+        if (!$id || ($expires !== null && (!$expires || $expires < time())) || !is_string($signature)
             || !preg_match('/\A[a-f0-9]{64}\z/', $signature)) throw new RuntimeException();
         $db = new PDO('sqlite:/var/lib/streamvideo/database.sqlite', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         $stmt = $db->prepare('SELECT id, filename, token_version FROM videos WHERE id = ?');
         $stmt->execute([$id]);
         $video = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$video || !hash_equals(playbackSignature($id, $expires, (int) $video['token_version'], playbackKey()), $signature)) {
+        if (!$video || !hash_equals(playbackSignature($id, (int) $video['token_version'], playbackKey(), $expires), $signature)) {
             throw new RuntimeException();
         }
         $filename = $video['filename'];
         if ($filename !== basename($filename) || str_contains($filename, '\\')
             || !in_array(strtolower(pathinfo($filename, PATHINFO_EXTENSION)), ['mp4', 'mov'], true)
             || is_link('/videos/' . $filename) || !is_file('/videos/' . $filename)) throw new RuntimeException();
-        return ['video' => $video, 'query' => http_build_query(['id' => $id, 'expires' => $expires, 'signature' => $signature])];
+        $query = ['id' => $id];
+        if ($expires !== null) $query['expires'] = $expires;
+        $query['signature'] = $signature;
+        return ['video' => $video, 'query' => http_build_query($query)];
     } catch (Throwable $exception) {
         http_response_code(403);
         header('Content-Type: text/plain; charset=UTF-8');

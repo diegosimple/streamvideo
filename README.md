@@ -152,7 +152,7 @@ No painel, clique em **Copiar iframe** e cole o código no seu site. O player us
   allow="fullscreen" referrerpolicy="no-referrer" allowfullscreen></iframe>
 ```
 
-Cada link tem assinatura HMAC e validade de **7 dias** a partir da geração. Alterar ID, validade ou assinatura invalida o link. **Revogar links** bloqueia os links e iframes anteriores daquele vídeo; copie um novo para continuar compartilhando. Após 7 dias, gere e substitua o iframe. Quem receber o link pode assistir até ele expirar ou ser revogado, sem precisar da senha administrativa.
+Cada link tem assinatura HMAC e não possui prazo de validade. Ele continua funcionando enquanto o vídeo estiver hospedado e não for removido ou revogado. **Revogar links** bloqueia os links e iframes anteriores daquele vídeo; copie um novo para continuar compartilhando. Quem receber o link pode assistir sem precisar da senha administrativa.
 
 O Nginx entrega o arquivo por uma rota interna somente após validar a assinatura. O caminho real do arquivo não é divulgado no iframe, e acessos diretos a `/videos/` e `/protected-videos/` são bloqueados. Essa proteção se aplica a vídeos gravados; o HLS ao vivo permanece público. Links assinados não são DRM: quem pode assistir pode capturar a reprodução ou reutilizar o link durante sua validade. Revogação bloqueia novas requisições, sem apagar dados já recebidos pelo navegador. Evite registrar os parâmetros dos links em logs do proxy e não use cache público nessas rotas.
 

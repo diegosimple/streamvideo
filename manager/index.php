@@ -170,7 +170,7 @@ $adminName = $admin['username'] ?? 'admin';
         </div>
         <div class="hero-meta">
             <span class="chip"><strong><?= count($videos) ?></strong> título(s)</span>
-            <span class="chip">Links válidos por <strong>7 dias</strong></span>
+            <span class="chip">Links <strong>sem prazo de validade</strong></span>
             <span class="chip">MP4 / MOV até <strong>500 MB</strong></span>
         </div>
         <form class="upload-rail" method="post" enctype="multipart/form-data">
