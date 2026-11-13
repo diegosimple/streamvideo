@@ -17,6 +17,7 @@ Escopo: portal de gestão com linguagem de catálogo (inspiração Netflix) e te
 - Título obrigatório de até 150 caracteres no envio; busca imediata por título ou arquivo, ignorando acentos e caixa. Vídeos antigos podem ser renomeados nos detalhes.
 - Capas carregadas sob demanda com quadro real do vídeo e fallback da videoteca. Clique abre o player; copiar link/iframe são ações visíveis, renomear/revogar/apagar ficam em “Gerenciar vídeo”.
 - Envio mostra arquivo e tamanho selecionados, valida limite e informa estado de envio. Busca sem resultado tem mensagem própria. Grade de uma coluna no celular e foco de teclado visível.
+- Seleção múltipla com título editável por arquivo e fila sequencial (500 MB por vídeo). Cada resultado é informado individualmente; repetir pendentes não reenvia sucessos. Falhas de conexão pedem conferência na biblioteca antes de repetir o arquivo.
 - Conta: menu “Trocar senha” no próprio portal; gera nova chave de recuperação exibida uma vez.
 - Player (`embed.php`): foco no vídeo, fundo preto, favicon da marca.
 

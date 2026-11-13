@@ -65,6 +65,41 @@ try {
       })()`, returnByValue: true });
       if (checks.exceptionDetails) throw new Error(JSON.stringify(checks.exceptionDetails));
       console.log(`${label}: ${checks.result.value}`);
+      const batch = await send('Runtime.evaluate', { expression: `(async () => {
+        const input = document.getElementById('video_file');
+        const selection = new DataTransfer();
+        selection.items.add(new File(['1234567890123456'], 'Primeiro_video.mp4', {type:'video/mp4'}));
+        selection.items.add(new File(['1234567890123456'], 'Segundo_video.mov', {type:'video/quicktime'}));
+        input.files = selection.files; input.dispatchEvent(new Event('change'));
+        const titles = document.querySelectorAll('#upload-queue input');
+        if (!input.multiple || titles.length !== 2 || titles[0].value !== 'Primeiro video') throw new Error('Batch selection failed');
+        titles[0].value = 'Título personalizado';
+        const originalFetch = window.fetch;
+        const calls = [];
+        window.fetch = async (url, options) => {
+          calls.push([options.body.get('title'), options.body.get('video_file').name]);
+          const fail = calls.length === 2;
+          return new Response(JSON.stringify(fail ? {ok:false,error:'Erro de teste'} : {ok:true}), {status:fail ? 400 : 200, headers:{'Content-Type':'application/json'}});
+        };
+        const form = document.getElementById('upload-form');
+        const submit = async () => {
+          form.requestSubmit();
+          for (let i = 0; i < 100 && input.disabled; i++) await new Promise(resolve => setTimeout(resolve, 10));
+          if (input.disabled) throw new Error('Batch did not complete');
+        };
+        try {
+          await submit();
+          if (calls.length !== 2 || calls[0][0] !== 'Título personalizado') throw new Error('Batch payload failed');
+          if (!document.getElementById('upload-status').textContent.startsWith('1 de 2')) throw new Error('Partial result failed');
+          await submit();
+          if (calls.length !== 3 || calls[2][1] !== 'Segundo_video.mov') throw new Error('Retry duplicated success');
+          if (!document.getElementById('upload-status').textContent.startsWith('2 de 2')) throw new Error('Final result failed');
+          if (document.documentElement.scrollWidth > innerWidth) throw new Error('Batch layout overflow');
+          return 'multiple files, individual titles, partial failure and retry passed';
+        } finally { window.fetch = originalFetch; }
+      })()`, returnByValue: true, awaitPromise: true });
+      if (batch.exceptionDetails) throw new Error(JSON.stringify(batch.exceptionDetails));
+      console.log(`${label}: ${batch.result.value}`);
       await send('Runtime.evaluate', { expression: 'window.scrollTo(0, 0)' });
       const expanded = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
       await writeFile(path.join(root, 'artifacts', `library-${label}-expanded.png`), Buffer.from(expanded.data, 'base64'));

@@ -35,6 +35,8 @@ function videoTitle(mixed $value): string {
     return $title;
 }
 $error = null;
+$jsonUpload = $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload'
+    && str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json');
 $freshRecovery = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -112,11 +114,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             throw new RuntimeException('Ação inválida.');
         }
+        if ($jsonUpload) {
+            unset($_SESSION['message']);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+            exit;
+        }
         header('Location: /', true, 303);
         exit;
     } catch (RuntimeException $exception) {
         if (http_response_code() < 400) http_response_code(400);
         $error = $exception->getMessage();
+        if ($jsonUpload) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => $error], JSON_THROW_ON_ERROR);
+            exit;
+        }
     }
 }
 foreach (array_merge(glob($videoDir . '*.mp4') ?: [], glob($videoDir . '*.mov') ?: []) as $file) {
@@ -190,7 +203,7 @@ $adminName = $admin['username'] ?? 'admin';
         </div>
     </section>
     <details class="upload-panel" id="new-video" <?= $error && ($_POST['action'] ?? '') === 'upload' ? 'open' : '' ?>>
-        <summary>Adicionar um vídeo <span>MP4 ou MOV · até 500 MB</span></summary>
+        <summary>Adicionar vídeos <span>MP4 ou MOV · até 500 MB por vídeo</span></summary>
         <form class="upload-rail" id="upload-form" method="post" enctype="multipart/form-data">
             <div class="upload-fields">
                 <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
@@ -200,12 +213,14 @@ $adminName = $admin['username'] ?? 'admin';
                 <p id="title-help">Use um nome fácil de reconhecer e buscar na biblioteca.</p>
             </div>
             <div class="file-zone">
-                <label for="video_file">Selecione o arquivo do vídeo</label>
+                <label for="video_file">Selecione os vídeos</label>
                 <input id="video_file" type="file" name="video_file" accept="video/mp4,video/quicktime,.mp4,.mov" required>
                 <p id="file-status" role="status">O título aparece no catálogo; o arquivo original fica nos detalhes.</p>
             </div>
+            <div id="upload-queue" hidden></div>
             <button type="submit" class="btn-primary">Enviar vídeo</button>
             <p id="upload-status" role="status" hidden></p>
+            <a id="refresh-library" class="btn btn-ghost" href="/" hidden>Ver vídeos na biblioteca</a>
         </form>
     </details>
 
@@ -300,24 +315,91 @@ $adminName = $admin['username'] ?? 'admin';
 const uploadPanel = document.getElementById('new-video');
 document.querySelector('a[href="#new-video"]').addEventListener('click', () => {
     uploadPanel.open = true;
-    document.getElementById('video_title').focus();
+    document.getElementById('video_file').focus();
 });
 const fileInput = document.getElementById('video_file');
-fileInput.addEventListener('change', () => {
-    const file = fileInput.files[0];
-    fileInput.setCustomValidity(file && file.size > 500 * 1024 * 1024 ? 'O vídeo deve ter no máximo 500 MB.' : '');
-    document.getElementById('file-status').textContent = file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB` : 'Selecione um vídeo MP4 ou MOV.';
-    fileInput.reportValidity();
+const uploadForm = document.getElementById('upload-form');
+const queueElement = document.getElementById('upload-queue');
+const uploadButton = uploadForm.querySelector('button[type="submit"]');
+const singleTitle = document.getElementById('video_title');
+singleTitle.required = false;
+singleTitle.disabled = true;
+singleTitle.closest('.upload-fields').hidden = true;
+fileInput.multiple = true;
+uploadButton.textContent = 'Enviar vídeos';
+document.getElementById('file-status').textContent = 'Selecione um ou mais arquivos e confira o título de cada vídeo antes de enviar.';
+let uploadQueue = [];
+let uploading = false;
+window.addEventListener('beforeunload', event => {
+    if (uploading) { event.preventDefault(); event.returnValue = ''; }
 });
-document.getElementById('upload-form').addEventListener('submit', event => {
-    const title = document.getElementById('video_title');
-    if (!title.value.trim()) {
-        event.preventDefault(); title.focus(); return;
+fileInput.addEventListener('change', () => {
+    queueElement.replaceChildren();
+    uploadQueue = [...fileInput.files].map((file, index) => {
+        const row = document.createElement('div'); row.className = 'upload-item';
+        const label = document.createElement('label'); label.htmlFor = `batch-title-${index}`;
+        label.textContent = `Título do vídeo ${index + 1}`;
+        const title = document.createElement('input'); title.type = 'text'; title.id = label.htmlFor;
+        title.required = true; title.maxLength = 150;
+        title.value = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').slice(0, 150);
+        const detail = document.createElement('p'); detail.textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`;
+        const result = document.createElement('p'); result.setAttribute('role', 'status');
+        const invalid = file.size > 500 * 1024 * 1024 || file.size < 16 || !/\.(mp4|mov)$/i.test(file.name);
+        result.textContent = invalid ? 'Arquivo inválido: selecione MP4 ou MOV de até 500 MB.' : 'Pronto para enviar';
+        row.append(label, title, detail, result); queueElement.append(row);
+        return { file, title, result, invalid, done: false, uncertain: false };
+    });
+    queueElement.hidden = !uploadQueue.length;
+    uploadButton.disabled = !uploadQueue.length || uploadQueue.some(item => item.invalid);
+    uploadButton.textContent = 'Enviar vídeos';
+    document.getElementById('file-status').textContent = `${uploadQueue.length} vídeo(s) selecionado(s). Confira os títulos abaixo.`;
+    document.getElementById('upload-status').hidden = true;
+});
+uploadForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (uploading || !uploadQueue.length || uploadQueue.some(item => item.invalid)) return;
+    for (const item of uploadQueue.filter(item => !item.done && !item.uncertain)) {
+        item.title.setCustomValidity(item.title.value.trim() ? '' : 'Informe o título do vídeo.');
+        if (!item.title.reportValidity()) {
+            item.title.addEventListener('input', () => item.title.setCustomValidity(''), { once: true });
+            return;
+        }
     }
-    const button = event.currentTarget.querySelector('button[type="submit"]');
-    button.disabled = true; button.textContent = 'Enviando…';
+    uploading = true; fileInput.disabled = true; uploadButton.disabled = true;
+    uploadQueue.forEach(item => item.title.disabled = true);
     const message = document.getElementById('upload-status');
-    message.hidden = false; message.textContent = 'Enviando seu vídeo. Aguarde a confirmação antes de fechar esta página.';
+    message.hidden = false;
+    for (const [index, item] of uploadQueue.entries()) {
+        if (item.done || item.uncertain) continue;
+        uploadButton.textContent = `Enviando ${index + 1} de ${uploadQueue.length}…`;
+        message.textContent = 'Aguarde a conclusão antes de fechar esta página.';
+        item.result.textContent = 'Enviando e processando vídeo…';
+        const data = new FormData();
+        data.append('action', 'upload'); data.append('csrf', uploadForm.elements.csrf.value);
+        data.append('title', item.title.value.trim()); data.append('video_file', item.file);
+        try {
+            const response = await fetch('/', { method: 'POST', body: data, headers: { Accept: 'application/json' } });
+            if (response.redirected || !response.headers.get('content-type')?.includes('application/json')) throw new Error('unexpected-response');
+            const result = await response.json();
+            if (!response.ok || result.ok !== true) {
+                item.result.textContent = result.error || 'Não foi possível enviar este vídeo.';
+                continue;
+            }
+            item.done = true; item.result.textContent = 'Enviado com sucesso';
+        } catch {
+            item.uncertain = true;
+            item.result.textContent = 'Não foi possível confirmar o envio. Confira a biblioteca antes de enviar este arquivo novamente.';
+            break;
+        }
+    }
+    uploading = false; fileInput.disabled = false;
+    uploadQueue.forEach(item => item.title.disabled = item.done || item.uncertain);
+    const sent = uploadQueue.filter(item => item.done).length;
+    const pending = uploadQueue.filter(item => !item.done && !item.uncertain).length;
+    message.textContent = `${sent} de ${uploadQueue.length} vídeo(s) enviado(s).${pending ? ' Você pode tentar enviar os pendentes novamente.' : ''}`;
+    uploadButton.textContent = pending ? 'Enviar pendentes' : 'Envio finalizado';
+    uploadButton.disabled = !pending;
+    document.getElementById('refresh-library').hidden = false;
 });
 const normalize = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
 const cards = [...document.querySelectorAll('.video-card')];

@@ -487,6 +487,9 @@ body.panel-body { background: #0b0d11; }
 .upload-rail input[type="file"] { font-size: 13px; }
 .upload-rail input::file-selector-button { padding: 10px; background: #2b303b; border: 0; color: #fff; border-radius: 5px; margin-right: 10px; cursor: pointer; }
 .upload-rail #upload-status { grid-column: 1 / -1; color: #b8daff; }
+#upload-queue { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; }
+.upload-item { padding: 16px; border: 1px solid #303641; border-radius: 8px; min-width: 0; }
+.upload-item input:disabled { opacity: .65; }
 button:disabled { opacity: .6; cursor: wait; transform: none; }
 .section-head { margin: 0 0 22px; align-items: center; }
 .section-head h2 { font-size: 24px; margin-bottom: 6px; }

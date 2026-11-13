@@ -9,7 +9,7 @@ header('X-Frame-Options: DENY');
 header('Referrer-Policy: no-referrer');
 header('Cache-Control: no-store');
 $nonce = base64_encode(random_bytes(24));
-header("Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'self' 'nonce-$nonce'; script-src 'nonce-$nonce'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+header("Content-Security-Policy: default-src 'none'; img-src 'self'; connect-src 'self'; media-src 'self' https://streaming.zeuspro.com.br; style-src 'self' 'nonce-$nonce'; script-src 'nonce-$nonce'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
 $_SESSION['csrf'] ??= bin2hex(random_bytes(32));
 
 function escape(string $value): string { return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
