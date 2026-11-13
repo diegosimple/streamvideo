@@ -21,8 +21,18 @@ $columns = $db->query('PRAGMA table_info(videos)')->fetchAll(PDO::FETCH_COLUMN, 
 if (!in_array('token_version', $columns, true)) {
     $db->exec('ALTER TABLE videos ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0');
 }
-function registerVideo(PDO $db, string $filename): void {
-    $db->prepare('INSERT OR IGNORE INTO videos (title, filename) VALUES (?, ?)')->execute([$filename, $filename]);
+function registerVideo(PDO $db, string $filename, ?string $title = null): void {
+    $db->prepare('INSERT OR IGNORE INTO videos (title, filename) VALUES (?, ?)')->execute([$title ?? $filename, $filename]);
+}
+function videoTitle(mixed $value): string {
+    if (!is_string($value) || !preg_match('//u', $value)) {
+        throw new RuntimeException('Informe um título válido para o vídeo.');
+    }
+    $title = trim(preg_replace('/\s+/u', ' ', $value));
+    if ($title === '' || preg_match_all('/./us', $title) > 150 || preg_match('/[\x00-\x1F\x7F]/u', $title)) {
+        throw new RuntimeException('O título deve ter entre 1 e 150 caracteres.');
+    }
+    return $title;
 }
 $error = null;
 $freshRecovery = null;
@@ -47,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->prepare('UPDATE videos SET token_version = token_version + 1 WHERE id = ?')->execute([(int) ($_POST['id'] ?? 0)]);
             $_SESSION['message'] = 'Links anteriores revogados. Copie o novo link ou iframe.';
         } elseif (($_POST['action'] ?? '') === 'upload') {
+            $title = videoTitle($_POST['title'] ?? null);
             $file = $_FILES['video_file'] ?? null;
             $extension = validateVideoUpload($file);
             $stem = preg_replace('/[^a-zA-Z0-9_-]/', '_', pathinfo(basename($file['name']), PATHINFO_FILENAME));
@@ -55,8 +66,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Não foi possível salvar o vídeo. Verifique as permissões da pasta videos.');
             }
             chmod($videoDir . $filename, 0644);
-            registerVideo($db, $filename);
+            registerVideo($db, $filename, $title);
             $_SESSION['message'] = 'Upload concluído.';
+        } elseif (($_POST['action'] ?? '') === 'rename') {
+            $title = videoTitle($_POST['title'] ?? null);
+            $db->prepare('UPDATE videos SET title = ? WHERE id = ?')->execute([$title, (int) ($_POST['id'] ?? 0)]);
+            $_SESSION['message'] = 'Título atualizado.';
         } elseif (($_POST['action'] ?? '') === 'password') {
             $currentPassword = input('current_password');
             $newPassword = input('password');
@@ -123,7 +138,7 @@ $adminName = $admin['username'] ?? 'admin';
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Biblioteca · Streaming Zeus PRO</title>
     <link rel="icon" href="/img/icone-erp.ico" type="image/x-icon">
-    <link rel="stylesheet" href="/access.css?v=20261105">
+    <link rel="stylesheet" href="/access.css?v=20261113">
 </head>
 <body class="panel-body">
 <header class="topbar">
@@ -163,26 +178,36 @@ $adminName = $admin['username'] ?? 'admin';
 </header>
 
 <main class="panel-shell">
-    <section class="hero">
+    <section class="hero library-intro">
         <div>
+            <p class="eyebrow">ZEUS PRO · SUA VIDEOTECA</p>
             <h1>Biblioteca de vídeos</h1>
-            <p>Gerencie aulas e gravações com visual de catálogo. Gere links assinados, incorpore no Zeus e revogue acessos quando precisar.</p>
+            <p>Aulas, tutoriais e gravações. Todo o seu conteúdo em um só lugar.</p>
         </div>
         <div class="hero-meta">
             <span class="chip"><strong><?= count($videos) ?></strong> título(s)</span>
-            <span class="chip">Links <strong>sem prazo de validade</strong></span>
-            <span class="chip">MP4 / MOV até <strong>500 MB</strong></span>
+            <a class="btn btn-primary" href="#new-video">＋ Adicionar vídeo</a>
         </div>
-        <form class="upload-rail" method="post" enctype="multipart/form-data">
-            <div>
+    </section>
+    <details class="upload-panel" id="new-video" <?= $error && ($_POST['action'] ?? '') === 'upload' ? 'open' : '' ?>>
+        <summary>Adicionar um vídeo <span>MP4 ou MOV · até 500 MB</span></summary>
+        <form class="upload-rail" id="upload-form" method="post" enctype="multipart/form-data">
+            <div class="upload-fields">
                 <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
                 <input type="hidden" name="action" value="upload">
-                <label for="video_file">Adicionar título à biblioteca</label>
+                <label for="video_title">Título do vídeo</label>
+                <input id="video_title" type="text" name="title" maxlength="150" placeholder="Ex.: Como cadastrar um produto" value="<?= escape(($_POST['action'] ?? '') === 'upload' && is_string($_POST['title'] ?? null) ? $_POST['title'] : '') ?>" aria-describedby="title-help" required>
+                <p id="title-help">Use um nome fácil de reconhecer e buscar na biblioteca.</p>
+            </div>
+            <div class="file-zone">
+                <label for="video_file">Selecione o arquivo do vídeo</label>
                 <input id="video_file" type="file" name="video_file" accept="video/mp4,video/quicktime,.mp4,.mov" required>
+                <p id="file-status" role="status">O título aparece no catálogo; o arquivo original fica nos detalhes.</p>
             </div>
             <button type="submit" class="btn-primary">Enviar vídeo</button>
+            <p id="upload-status" role="status" hidden></p>
         </form>
-    </section>
+    </details>
 
     <?php if ($freshRecovery): ?>
         <aside class="recovery-banner" role="status">
@@ -198,8 +223,12 @@ $adminName = $admin['username'] ?? 'admin';
 
     <div class="section-head">
         <div>
-            <h2>Catálogo</h2>
-            <p>Gravações ao vivo aparecem após a conversão para MP4. Atualize a página para sincronizar.</p>
+            <h2>Seu catálogo</h2>
+            <p id="result-count" role="status"><?= count($videos) ?> vídeo(s) · mais recentes primeiro</p>
+        </div>
+        <div class="catalog-search">
+            <label class="sr-only" for="video-search">Buscar por título ou arquivo</label>
+            <input type="search" id="video-search" placeholder="Buscar por título ou arquivo…" autocomplete="off">
         </div>
     </div>
 
@@ -210,20 +239,34 @@ $adminName = $admin['username'] ?? 'admin';
             $mediaUrl = 'https://streaming.zeuspro.com.br/media.php?' . $query;
             $label = $video['title'] !== '' ? $video['title'] : $video['filename'];
             ?>
-            <article class="video-card" data-filename="<?= escape($video['filename']) ?>">
-                <div class="video-poster">
-                    <video muted playsinline preload="metadata" src="<?= escape($mediaUrl) ?>" aria-hidden="true" tabindex="-1"></video>
-                    <span class="poster-badge">ID <?= (int) $video['id'] ?></span>
+            <article class="video-card" data-title="<?= escape($label) ?>" data-filename="<?= escape($video['filename']) ?>">
+                <a class="video-poster" href="<?= escape($playerUrl) ?>" target="_blank" rel="noopener" aria-label="<?= escape('Assistir: ' . $label . ' (abre em nova aba)') ?>">
+                    <span class="poster-placeholder" aria-hidden="true">ZEUS<span>PRO STREAMING</span></span>
+                    <video muted playsinline preload="none" data-src="<?= escape($mediaUrl) ?>" aria-hidden="true" tabindex="-1"></video>
+                    <span class="poster-badge"><?= escape(strtoupper(pathinfo($video['filename'], PATHINFO_EXTENSION))) ?></span>
                     <div class="poster-play" aria-hidden="true"><span>▶</span></div>
-                </div>
+                </a>
                 <div class="video-body">
                     <h3 title="<?= escape($label) ?>"><?= escape($label) ?></h3>
+                    <div class="meta">Adicionado em <?= escape(date('d/m/Y', strtotime($video['created_at']))) ?></div>
+                    <div class="video-actions">
+                        <button type="button" class="btn btn-primary btn-sm" data-copy="<?= (int) $video['id'] ?>">Copiar link</button>
+                        <button type="button" class="btn btn-ghost btn-sm" data-embed="<?= (int) $video['id'] ?>">Copiar iframe</button>
+                    </div>
+                    <details class="video-details">
+                        <summary>Gerenciar vídeo</summary>
+                        <form method="post" class="rename-form">
+                            <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
+                            <input type="hidden" name="action" value="rename">
+                            <input type="hidden" name="id" value="<?= (int) $video['id'] ?>">
+                            <label for="title_<?= (int) $video['id'] ?>">Título</label>
+                            <input id="title_<?= (int) $video['id'] ?>" name="title" type="text" value="<?= escape($label) ?>" maxlength="150" required>
+                            <button class="btn btn-ghost btn-sm" type="submit">Salvar título</button>
+                        </form>
                     <div class="meta">Arquivo · <?= escape($video['filename']) ?></div>
                     <label class="sr-only" for="url_<?= (int) $video['id'] ?>">URL do player</label>
                     <input type="text" id="url_<?= (int) $video['id'] ?>" value="<?= escape($playerUrl) ?>" readonly>
                     <div class="video-actions">
-                        <button type="button" class="btn btn-primary btn-sm" data-copy="<?= (int) $video['id'] ?>">Copiar link</button>
-                        <button type="button" class="btn btn-ghost btn-sm" data-embed="<?= (int) $video['id'] ?>">Copiar iframe</button>
                         <form method="post">
                             <input type="hidden" name="csrf" value="<?= escape($_SESSION['csrf']) ?>">
                             <input type="hidden" name="action" value="revoke">
@@ -237,6 +280,7 @@ $adminName = $admin['username'] ?? 'admin';
                             <button type="submit" class="btn btn-danger btn-sm span-2">Apagar</button>
                         </form>
                     </div>
+                    </details>
                 </div>
             </article>
         <?php endforeach; ?>
@@ -247,11 +291,62 @@ $adminName = $admin['username'] ?? 'admin';
             </div>
         <?php endif; ?>
     </section>
+    <div id="search-empty" class="empty-state" hidden><strong>Nenhum vídeo encontrado</strong>Tente outro título ou nome de arquivo.</div>
 
     <p id="copy-status" role="status" aria-live="polite"></p>
     <textarea id="embed-code" class="sr-only" aria-label="Código iframe para copiar" rows="4" cols="60" readonly></textarea>
 </main>
 <script nonce="<?= escape($nonce) ?>">
+const uploadPanel = document.getElementById('new-video');
+document.querySelector('a[href="#new-video"]').addEventListener('click', () => {
+    uploadPanel.open = true;
+    document.getElementById('video_title').focus();
+});
+const fileInput = document.getElementById('video_file');
+fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    fileInput.setCustomValidity(file && file.size > 500 * 1024 * 1024 ? 'O vídeo deve ter no máximo 500 MB.' : '');
+    document.getElementById('file-status').textContent = file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB` : 'Selecione um vídeo MP4 ou MOV.';
+    fileInput.reportValidity();
+});
+document.getElementById('upload-form').addEventListener('submit', event => {
+    const title = document.getElementById('video_title');
+    if (!title.value.trim()) {
+        event.preventDefault(); title.focus(); return;
+    }
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    button.disabled = true; button.textContent = 'Enviando…';
+    const message = document.getElementById('upload-status');
+    message.hidden = false; message.textContent = 'Enviando seu vídeo. Aguarde a confirmação antes de fechar esta página.';
+});
+const normalize = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+const cards = [...document.querySelectorAll('.video-card')];
+document.getElementById('video-search').addEventListener('input', event => {
+    const query = normalize(event.target.value.trim());
+    let count = 0;
+    cards.forEach(card => {
+        card.hidden = !normalize(card.dataset.title + ' ' + card.dataset.filename).includes(query);
+        if (!card.hidden) count++;
+    });
+    document.getElementById('result-count').textContent = `${count} vídeo(s)${query ? ' encontrado(s)' : ' · mais recentes primeiro'}`;
+    document.getElementById('search-empty').hidden = !query || count > 0;
+    const empty = document.querySelector('.video-grid > .empty-state');
+    if (empty) empty.hidden = Boolean(query);
+});
+const loadPoster = video => {
+    video.src = video.dataset.src;
+    video.preload = 'metadata';
+    video.addEventListener('loadedmetadata', () => {
+        if (Number.isFinite(video.duration) && video.duration > 0) video.currentTime = Math.min(1, video.duration / 2);
+    }, { once: true });
+    video.addEventListener('seeked', () => video.classList.add('poster-ready'), { once: true });
+};
+if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(entries => entries.forEach(entry => {
+        if (entry.isIntersecting) { loadPoster(entry.target); observer.unobserve(entry.target); }
+    }), { rootMargin: '120px' });
+    document.querySelectorAll('video[data-src]').forEach(video => observer.observe(video));
+} else document.querySelectorAll('video[data-src]').forEach(loadPoster);
 const status = document.getElementById('copy-status');
 function flash(message) {
     status.textContent = message;
@@ -291,6 +386,7 @@ async function copyUrl(id) {
         await navigator.clipboard.writeText(input.value);
         flash('URL copiada.');
     } catch {
+        input.closest('details').open = true;
         input.select();
         flash('Pressione Ctrl+C para copiar a URL.');
     }

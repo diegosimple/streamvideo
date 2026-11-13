@@ -40,7 +40,7 @@ def post(browser, fields, expected=200):
 def upload(browser, token, name, data, expected=200):
     boundary = secrets.token_hex(16)
     body = b''
-    for key, value in [('csrf', token), ('action', 'upload')]:
+    for key, value in [('csrf', token), ('action', 'upload'), ('title', 'Vídeo de teste')]:
         body += f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
     body += f'--{boundary}\r\nContent-Disposition: form-data; name="video_file"; filename="{name}"\r\nContent-Type: video/mp4\r\n\r\n'.encode()
     body += data + f'\r\n--{boundary}--\r\n'.encode()
@@ -126,6 +126,13 @@ try:
             card = next(card for card in page.decode().split('<article ') if prefix in card)
             video_id = re.search(r'id="url_(\d+)"', card)[1]
             created_ids.append(video_id)
+            assert 'Vídeo de teste' in card
+            post(browser, {'action': 'rename', 'id': video_id, 'csrf': token, 'title': '   '}, expected=400)
+            post(browser, {'action': 'rename', 'id': video_id, 'csrf': 'invalid', 'title': 'Rejected'}, expected=400)
+            renamed, _ = post(browser, {'action': 'rename', 'id': video_id, 'csrf': token, 'title': 'Introdução <segura>'})
+            assert 'Introdução &lt;segura&gt;' in renamed.decode()
+            refreshed, _ = fetch(browser, MANAGER)
+            assert 'Introdução &lt;segura&gt;' in refreshed.decode()
             signed_url = html.unescape(re.search(r'value="(https://streaming[^\"]+)"', card)[1])
             query = urllib.parse.urlsplit(signed_url).query
             embed, headers = fetch(anonymous, PUBLIC + '/embed.php?' + query)

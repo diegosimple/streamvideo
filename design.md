@@ -12,7 +12,11 @@ Escopo: portal de gestão com linguagem de catálogo (inspiração Netflix) e te
 ## Hierarquia
 
 - Login / setup / recuperar: cartão central escuro, faixa gradiente da marca, uma ação principal.
-- Biblioteca autenticada: topbar fixa (logo + conta + sair), hero com upload, grade de capas estilo catálogo.
+- Biblioteca autenticada: topbar fixa, introdução editorial, envio recolhível, busca e grade de capas 16:9. Fundo carvão neutro, com azul Zeus PRO nas ações.
+- Direção confirmada pelo pedido: catálogo de streaming inspirado na Netflix, preservando marca e stack PHP. Implementação direta no produto existente.
+- Título obrigatório de até 150 caracteres no envio; busca imediata por título ou arquivo, ignorando acentos e caixa. Vídeos antigos podem ser renomeados nos detalhes.
+- Capas carregadas sob demanda com quadro real do vídeo e fallback da videoteca. Clique abre o player; copiar link/iframe são ações visíveis, renomear/revogar/apagar ficam em “Gerenciar vídeo”.
+- Envio mostra arquivo e tamanho selecionados, valida limite e informa estado de envio. Busca sem resultado tem mensagem própria. Grade de uma coluna no celular e foco de teclado visível.
 - Conta: menu “Trocar senha” no próprio portal; gera nova chave de recuperação exibida uma vez.
 - Player (`embed.php`): foco no vídeo, fundo preto, favicon da marca.
 
